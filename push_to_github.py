@@ -51,7 +51,6 @@ def main():
 
     # Add remote
     print("🔗 Adding GitHub remote...")
-    # Try to remove existing origin first (ignore error if not exists)
     run_command(["git", "remote", "remove", "origin"], cwd=project_root, ignore_error=True)
     run_command([
         "git", "remote", "add", "origin",
@@ -91,6 +90,12 @@ def main():
     print("🌿 Setting main branch...")
     run_command(["git", "branch", "-M", "main"], cwd=project_root)
     print("✅ Main branch set")
+    print()
+
+    # Pull from GitHub (to merge remote changes)
+    print("📥 Pulling from GitHub...")
+    run_command(["git", "pull", "origin", "main", "--allow-unrelated-histories"], cwd=project_root, ignore_error=True)
+    print("✅ Pulled from GitHub")
     print()
 
     # Push to GitHub
