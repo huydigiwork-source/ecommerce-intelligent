@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - main
+  schedule:
+    # Run scraper every day at 00:00 UTC (7:00 AM Vietnam time)
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+    # Allow manual trigger
 
 jobs:
   detect-changes:
@@ -21,28 +26,105 @@ jobs:
       - name: Detect changed files
         id: changes
         run: |
-          echo "Checking changed files from last commit..."
-          git diff --name-only HEAD~1 HEAD > changed_files.txt
-          cat changed_files.txt
-          
           echo "frontend=false" >> $GITHUB_OUTPUT
           echo "backend=false" >> $GITHUB_OUTPUT
           echo "data=false" >> $GITHUB_OUTPUT
           
-          if grep -q "^frontend/" changed_files.txt; then
+          if git diff --name-only HEAD~1 HEAD | grep -q "^frontend/"; then
             echo "frontend=true" >> $GITHUB_OUTPUT
             echo "✅ Frontend changed"
           fi
           
-          if grep -q "^backend/" changed_files.txt; then
+          if git diff --name-only HEAD~1 HEAD | grep -q "^backend/"; then
             echo "backend=true" >> $GITHUB_OUTPUT
             echo "✅ Backend changed"
           fi
           
-          if grep -q "^data/" changed_files.txt; then
+          if git diff --name-only HEAD~1 HEAD | grep -q "^data/"; then
             echo "data=true" >> $GITHUB_OUTPUT
             echo "✅ Data changed"
           fi
+
+  run-scraper:
+    runs-on: ubuntu-latest
+    outputs:
+      csv_created: ${{ steps.scraper.outputs.csv_created }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install huggingface_hub
+
+      - name: Login to Hugging Face
+        run: huggingface-cli login --token ${{ secrets.HF_TOKEN }}
+
+      - name: Login to Kaggle
+        run: |
+          echo '${{ secrets.KAGGLE_API_TOKEN }}' > ~/.kaggle/access_token
+          chmod 600 ~/.kaggle/access_token
+
+      - name: Run scraper
+        id: scraper
+        run: |
+          echo "🚀 Running scraper..."
+          mkdir -p data
+          python backend/scraper.py
+          if [ -f "data/ecommerce_products.csv" ]; then
+            echo "csv_created=true" >> $GITHUB_OUTPUT
+            echo "✅ CSV created successfully"
+            ls -lh data/
+          else
+            echo "csv_created=false" >> $GITHUB_OUTPUT
+            echo "❌ CSV not created"
+          fi
+
+  upload-to-dataset:
+    needs: [detect-changes, run-scraper]
+    if: ${{ needs.detect-changes.outputs.data == 'true' || needs.run-scraper.outputs.csv_created == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
+
+      - name: Login to Hugging Face
+        run: huggingface-cli login --token ${{ secrets.HF_TOKEN }}
+
+      - name: Run scraper (if data not changed)
+        if: ${{ needs.detect-changes.outputs.data == 'false' }}
+        run: |
+          echo "🚀 Running scraper to generate CSV..."
+          pip install -r requirements.txt
+          mkdir -p data
+          python backend/scraper.py
+
+      - name: Upload data to HF Dataset
+        run: |
+          echo "📤 Uploading data to HF Dataset..."
+          if [ -d "data" ]; then
+            huggingface-cli upload ${{ secrets.HF_DATASET_ID }} data data/ --repo-type dataset
+          elif [ -f "data/ecommerce_products.csv" ]; then
+            huggingface-cli upload ${{ secrets.HF_DATASET_ID }} data/ecommerce_products.csv data/ecommerce_products.csv --repo-type dataset
+          else
+            echo "❌ No data files found"
+            exit 1
+          fi
+          echo "✅ Data uploaded successfully"
 
   upload-to-space:
     needs: detect-changes
@@ -52,26 +134,29 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Sync to Hugging Face Space
-        uses: huggingface/hub-sync@v0.1.0
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          github_repo_id: ${{ github.repository }}
-          huggingface_repo_id: ${{ secrets.HF_SPACE_ID }}
-          hf_token: ${{ secrets.HF_TOKEN }}
-          repo_type: space
+          python-version: '3.10'
 
-  upload-to-dataset:
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.data == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Install huggingface_hub
+        run: pip install huggingface_hub
 
-      - name: Sync to Hugging Face Dataset
-        uses: huggingface/hub-sync@v0.1.0
-        with:
-          github_repo_id: ${{ github.repository }}
-          huggingface_repo_id: ${{ secrets.HF_DATASET_ID }}
-          hf_token: ${{ secrets.HF_TOKEN }}
-          repo_type: dataset
+      - name: Login to Hugging Face
+        run: huggingface-cli login --token ${{ secrets.HF_TOKEN }}
+
+      - name: Upload frontend to HF Space
+        if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
+        run: |
+          echo "📤 Uploading frontend to HF Space..."
+          if [ -d "frontend" ]; then
+            huggingface-cli upload ${{ secrets.HF_SPACE_ID }} frontend frontend/ --repo-type space
+          fi
+
+      - name: Upload backend to HF Space
+        if: ${{ needs.detect-changes.outputs.backend == 'true' }}
+        run: |
+          echo "📤 Uploading backend to HF Space..."
+          if [ -d "backend" ]; then
+            huggingface-cli upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
+          fi
