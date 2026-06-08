@@ -62,15 +62,14 @@ jobs:
         run: |
           pip install -r requirements.txt
           pip install huggingface_hub
+          pip install kaggle
 
-      - name: Login to Hugging Face
-        run: hf auth login --token ${{ secrets.HF_TOKEN }}
-
-      - name: Setup Kaggle API (environment method)
+      - name: Setup Kaggle API (kaggle.json method)
         run: |
-          echo "✅ Setting up Kaggle API via environment variables..."
-          export KAGGLE_API_TOKEN='${{ secrets.KAGGLE_API_TOKEN }}'
-          echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
+          echo "✅ Setting up Kaggle API via kaggle.json..."
+          mkdir -p ~/.config/kaggle
+          cp ${{ github.workspace }}/kaggle.json ~/.config/kaggle/kaggle.json
+          chmod 600 ~/.config/kaggle/kaggle.json
           echo "✅ Kaggle API setup complete"
 
       - name: Run scraper
@@ -112,6 +111,7 @@ jobs:
         run: |
           echo "🚀 Running scraper to generate CSV..."
           pip install -r requirements.txt
+          pip install kaggle
           mkdir -p data
           python backend/scraper.py
 
