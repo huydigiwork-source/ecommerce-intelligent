@@ -21,200 +21,35 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Check changed files (Python)
+      - name: Check changed files (git)
         id: check
         run: |
-          python .github/check-changes.py
-
-  run-scraper:
-    runs-on: ubuntu-latest
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.data == 'true' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    outputs:
-      csv_created: ${{ steps.scraper.outputs.csv_created }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install dependencies
-        run: |
-          pip install -r requirements.txt
-          pip install huggingface_hub
-          pip install kaggle
-
-      - name: Setup Kaggle API (kaggle.json method)
-        run: |
-          echo "✅ Setting up Kaggle API via kaggle.json..."
-          mkdir -p ~/.config/kaggle
-          cp ${{ github.workspace }}/kaggle.json ~/.config/kaggle/kaggle.json
-          chmod 600 ~/.config/kaggle/kaggle.json
-          echo "✅ Kaggle API setup complete"
-
-      - name: Run scraper
-        id: scraper
-        run: |
-          echo "🚀 Running scraper..."
-          mkdir -p data
-          python backend/scraper.py
-          if [ -f "data/ecommerce_products.csv" ]; then
-            echo "csv_created=true" >> $GITHUB_OUTPUT
-            echo "✅ CSV created successfully"
-            ls -lh data/
-          else
-            echo "csv_created=false" >> $GITHUB_OUTPUT
-            echo "❌ CSV not created"
-          fi
-
-      - name: Upload CSV artifact
-        if: ${{ steps.scraper.outputs.csv_created == 'true' }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: csv-data
-          path: data/ecommerce_products.csv
-
-  upload-to-dataset:
-    needs: [detect-changes, run-scraper]
-    if: ${{ needs.detect-changes.outputs.data == 'true' || needs.run-scraper.outputs.csv_created == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install huggingface_hub
-        run: pip install huggingface_hub
-
-      - name: Login to Hugging Face
-        run: hf auth login --token ${{ secrets.HF_TOKEN }}
-
-      - name: Download CSV artifact
-        if: ${{ needs.run-scraper.outputs.csv_created == 'true' }}
-        uses: actions/download-artifact@v4
-        with:
-          name: csv-data
-          path: data
-
-      - name: Run scraper (if data changed locally)
-        if: ${{ needs.detect-changes.outputs.data == 'true' }}
-        run: |
-          echo "🚀 Running scraper to generate CSV..."
-          pip install -r requirements.txt
-          pip install kaggle
-          mkdir -p data
-          python backend/scraper.py
-
-      - name: Upload data to HF Dataset
-        run: |
-          echo "📤 Uploading data to HF Dataset..."
-          if [ -f "data/ecommerce_products.csv" ]; then
-            hf upload ${{ secrets.HF_DATASET_ID }} data/ecommerce_products.csv data/ecommerce_products.csv --repo-type dataset
-            echo "✅ Data uploaded successfully"
-            ls -lh data/
-          else
-            echo "❌ No data files found"
-            ls -lh data/
-            exit 1
-          fi
-
-  upload-to-space:
-    needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-
-      - name: Install huggingface_hub
-        run: pip install huggingface_hub
-
-      - name: Login to Hugging Face
-        run: hf auth login --token ${{ secrets.HF_TOKEN }}
-
-      - name: Build Vue.js (if frontend changed)
-        if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
-        run: |
-          echo "🔨 Building Vue.js frontend..."
-          if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
-            cd frontend
-            npm install
-            npm run build
-            echo "✅ Vue.js built successfully"
-            ls -lh dist/
-          else
-            echo "⚠️ No Vue.js frontend found"
-          fi
-
-      - name: Upload frontend to HF Space
-        if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
-        run: |
-          echo "📤 Uploading frontend to HF Space..."
-          if [ -d "frontend/dist" ]; then
-            hf upload ${{ secrets.HF_SPACE_ID }} frontend/dist frontend/ --repo-type space
-            echo "✅ Frontend uploaded successfully"
-            ls -lh frontend/dist/
-          elif [ -d "frontend" ]; then
-            hf upload ${{ secrets.HF_SPACE_ID }} frontend frontend/ --repo-type space
-            echo "✅ Frontend (static) uploaded successfully"
-          else
-            echo "❌ No frontend files found"
-            exit 1
-          fi
-
-      - name: Upload backend to HF Space
-        if: ${{ needs.detect-changes.outputs.backend == 'true' }}
-        run: |
-          echo "📤 Uploading backend to HF Space..."
-          if [ -d "backend" ]; then
-            # Upload toàn bộ backend/
-            hf upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
-            
-            # Upload root requirements.txt nếu có
-            if [ -f "requirements.txt" ]; then
-              hf upload ${{ secrets.HF_SPACE_ID }} requirements.txt requirements.txt --repo-type space
-              echo "✅ requirements.txt uploaded"
-            fi
-            
-            echo "✅ Backend uploaded successfully"
-            ls -lh backend/
-          else
-            echo "❌ No backend files found"
-            exit 1
-          fi
-
-      - name: Upload both frontend and backend (if both changed)
-        if: ${{ needs.detect-changes.outputs.frontend == 'true' && needs.detect-changes.outputs.backend == 'true' }}
-        run: |
-          echo "🚀 Both frontend and backend changed - uploading both..."
+          echo "frontend=false" >> $GITHUB_OUTPUT
+          echo "backend=false" >> $GITHUB_OUTPUT
+          echo "data=false" >> $GITHUB_OUTPUT
           
-          # Upload frontend/dist nếu có
-          if [ -d "frontend/dist" ]; then
-            hf upload ${{ secrets.HF_SPACE_ID }} frontend/dist frontend/ --repo-type space
-            echo "✅ Frontend (built) re-uploaded"
+          # Get list of all files in last commit
+          echo "📋 Getting files from HEAD commit..."
+          COMMIT_FILES=$(git log -1 --name-only --pretty=format: HEAD)
+          
+          echo "📋 Files in commit:"
+          echo "$COMMIT_FILES"
+          echo ""
+          
+          # Check frontend/
+          if echo "$COMMIT_FILES" | grep -q "^frontend/"; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "✅ Frontend changed"
           fi
           
-          # Upload backend
-          if [ -d "backend" ]; then
-            hf upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
-            echo "✅ Backend re-uploaded"
+          # Check backend/, app.py, requirements.txt, Dockerfile
+          if echo "$COMMIT_FILES" | grep -qE "^backend/|^app\.py$|^requirements\.txt$|^Dockerfile$"; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+            echo "✅ Backend changed"
           fi
           
-          echo "✅ Both frontend and backend uploaded successfully"
+          # Check data/
+          if echo "$COMMIT_FILES" | grep -q "^data/"; then
+            echo "data=true" >> $GITHUB_OUTPUT
+            echo "✅ Data changed"
+          fi
