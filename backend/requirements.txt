@@ -1,0 +1,6 @@
+fastapi
+pandas
+uvicorn
+huggingface_hub
+kaggle
+python-multipart

@@ -171,12 +171,34 @@ jobs:
       - name: Login to Hugging Face
         run: hf auth login --token ${{ secrets.HF_TOKEN }}
 
+      - name: Build Vue.js (if frontend changed)
+        if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
+        run: |
+          echo "🔨 Building Vue.js frontend..."
+          if [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+            cd frontend
+            npm install
+            npm run build
+            echo "✅ Vue.js built successfully"
+            ls -lh dist/
+          else
+            echo "⚠️ No Vue.js frontend found"
+          fi
+
       - name: Upload frontend to HF Space
         if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
         run: |
           echo "📤 Uploading frontend to HF Space..."
-          if [ -d "frontend" ]; then
+          if [ -d "frontend/dist" ]; then
+            hf upload ${{ secrets.HF_SPACE_ID }} frontend/dist frontend/ --repo-type space
+            echo "✅ Frontend uploaded successfully"
+            ls -lh frontend/dist/
+          elif [ -d "frontend" ]; then
             hf upload ${{ secrets.HF_SPACE_ID }} frontend frontend/ --repo-type space
+            echo "✅ Frontend (static) uploaded successfully"
+          else
+            echo "❌ No frontend files found"
+            exit 1
           fi
 
       - name: Upload backend to HF Space
@@ -185,4 +207,8 @@ jobs:
           echo "📤 Uploading backend to HF Space..."
           if [ -d "backend" ]; then
             hf upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
+            echo "✅ Backend uploaded successfully"
+          else
+            echo "❌ No backend files found"
+            exit 1
           fi
