@@ -12,46 +12,24 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      frontend_changed: ${{ steps.changes.outputs.frontend }}
-      backend_changed: ${{ steps.changes.outputs.backend }}
-      data_changed: ${{ steps.changes.outputs.data }}
+      frontend_changed: ${{ steps.check.outputs.frontend }}
+      backend_changed: ${{ steps.check.outputs.backend }}
+      data_changed: ${{ steps.check.outputs.data }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 2
 
-      - name: Detect changed files
-        id: changes
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Check changed files (Python)
+        id: check
         run: |
-          echo "frontend=false" >> $GITHUB_OUTPUT
-          echo "backend=false" >> $GITHUB_OUTPUT
-          echo "data=false" >> $GITHUB_OUTPUT
-          
-          # Get changed files from last commit
-          CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r HEAD~1 HEAD)
-          
-          echo "📋 Changed files:"
-          echo "$CHANGED_FILES"
-          echo ""
-          
-          # Check frontend/
-          if echo "$CHANGED_FILES" | grep -q "^frontend/"; then
-            echo "frontend=true" >> $GITHUB_OUTPUT
-            echo "✅ Frontend changed"
-          fi
-          
-          # Check backend/, app.py, requirements.txt, backend/*
-          if echo "$CHANGED_FILES" | grep -qE "^backend/|^app\.py$|^requirements\.txt$"; then
-            echo "backend=true" >> $GITHUB_OUTPUT
-            echo "✅ Backend changed"
-          fi
-          
-          # Check data/
-          if echo "$CHANGED_FILES" | grep -q "^data/"; then
-            echo "data=true" >> $GITHUB_OUTPUT
-            echo "✅ Data changed"
-          fi
+          python .github/check-changes.py
 
   run-scraper:
     runs-on: ubuntu-latest
@@ -206,9 +184,37 @@ jobs:
         run: |
           echo "📤 Uploading backend to HF Space..."
           if [ -d "backend" ]; then
+            # Upload toàn bộ backend/
             hf upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
+            
+            # Upload root requirements.txt nếu có
+            if [ -f "requirements.txt" ]; then
+              hf upload ${{ secrets.HF_SPACE_ID }} requirements.txt requirements.txt --repo-type space
+              echo "✅ requirements.txt uploaded"
+            fi
+            
             echo "✅ Backend uploaded successfully"
+            ls -lh backend/
           else
             echo "❌ No backend files found"
             exit 1
           fi
+
+      - name: Upload both frontend and backend (if both changed)
+        if: ${{ needs.detect-changes.outputs.frontend == 'true' && needs.detect-changes.outputs.backend == 'true' }}
+        run: |
+          echo "🚀 Both frontend and backend changed - uploading both..."
+          
+          # Upload frontend/dist nếu có
+          if [ -d "frontend/dist" ]; then
+            hf upload ${{ secrets.HF_SPACE_ID }} frontend/dist frontend/ --repo-type space
+            echo "✅ Frontend (built) re-uploaded"
+          fi
+          
+          # Upload backend
+          if [ -d "backend" ]; then
+            hf upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
+            echo "✅ Backend re-uploaded"
+          fi
+          
+          echo "✅ Both frontend and backend uploaded successfully"
