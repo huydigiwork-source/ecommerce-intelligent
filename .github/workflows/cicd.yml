@@ -5,10 +5,8 @@ on:
     branches:
       - main
   schedule:
-    # Run scraper every day at 00:00 UTC (7:00 AM Vietnam time)
     - cron: '0 0 * * *'
   workflow_dispatch:
-    # Allow manual trigger
 
 jobs:
   detect-changes:
@@ -32,17 +30,14 @@ jobs:
           
           if git diff --name-only HEAD~1 HEAD | grep -q "^frontend/"; then
             echo "frontend=true" >> $GITHUB_OUTPUT
-            echo "✅ Frontend changed"
           fi
           
           if git diff --name-only HEAD~1 HEAD | grep -q "^backend/"; then
             echo "backend=true" >> $GITHUB_OUTPUT
-            echo "✅ Backend changed"
           fi
           
           if git diff --name-only HEAD~1 HEAD | grep -q "^data/"; then
             echo "data=true" >> $GITHUB_OUTPUT
-            echo "✅ Data changed"
           fi
 
   run-scraper:
@@ -87,6 +82,13 @@ jobs:
             echo "❌ CSV not created"
           fi
 
+      - name: Upload CSV artifact
+        if: ${{ steps.scraper.outputs.csv_created == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: csv-data
+          path: data/ecommerce_products.csv
+
   upload-to-dataset:
     needs: [detect-changes, run-scraper]
     if: ${{ needs.detect-changes.outputs.data == 'true' || needs.run-scraper.outputs.csv_created == 'true' }}
@@ -106,8 +108,15 @@ jobs:
       - name: Login to Hugging Face
         run: hf auth login --token ${{ secrets.HF_TOKEN }}
 
-      - name: Run scraper (if data not changed)
-        if: ${{ needs.detect-changes.outputs.data == 'false' }}
+      - name: Download CSV artifact
+        if: ${{ needs.run-scraper.outputs.csv_created == 'true' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: csv-data
+          path: data
+
+      - name: Run scraper (if data changed)
+        if: ${{ needs.detect-changes.outputs.data == 'true' }}
         run: |
           echo "🚀 Running scraper to generate CSV..."
           pip install -r requirements.txt
@@ -118,15 +127,15 @@ jobs:
       - name: Upload data to HF Dataset
         run: |
           echo "📤 Uploading data to HF Dataset..."
-          if [ -d "data" ]; then
-            hf upload ${{ secrets.HF_DATASET_ID }} data data/ --repo-type dataset
-          elif [ -f "data/ecommerce_products.csv" ]; then
+          if [ -f "data/ecommerce_products.csv" ]; then
             hf upload ${{ secrets.HF_DATASET_ID }} data/ecommerce_products.csv data/ecommerce_products.csv --repo-type dataset
+            echo "✅ Data uploaded successfully"
+            ls -lh data/
           else
             echo "❌ No data files found"
+            ls -lh data/
             exit 1
           fi
-          echo "✅ Data uploaded successfully"
 
   upload-to-space:
     needs: detect-changes
