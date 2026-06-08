@@ -1,32 +1,46 @@
 import logging
+import os
 import pandas as pd
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse
 from pathlib import Path
+from huggingface_hub import hf_hub_download
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="E-Commerce Product Intelligence Platform")
 
-LOCAL_CSV_PATH = Path("../data/ecommerce_products.csv")
+# HF Dataset config
+HF_DATASET_ID = "Vincentran/ecommerce-dataset"
+HF_CSV_PATH = "data/ecommerce_products.csv"
 
 
 def load_data():
-    """Load CSV từ local."""
-    if not LOCAL_CSV_PATH.exists():
-        raise FileNotFoundError(f"CSV not found: {LOCAL_CSV_PATH}")
+    """Load CSV từ HF Dataset."""
+    try:
+        # Download CSV từ HF Dataset
+        logger.info(f"Downloading CSV from HF Dataset: {HF_DATASET_ID}/{HF_CSV_PATH}")
+        local_csv_path = hf_hub_download(
+            repo_id=HF_DATASET_ID,
+            filename=HF_CSV_PATH,
+            repo_type="dataset"
+        )
 
-    file_size = LOCAL_CSV_PATH.stat().st_size
-    logger.info(f"Loading CSV from: {LOCAL_CSV_PATH} (size: {file_size} bytes)")
+        file_size = os.path.getsize(local_csv_path)
+        logger.info(f"Loading CSV from: {local_csv_path} (size: {file_size} bytes)")
 
-    if file_size == 0:
-        raise ValueError(f"CSV file is empty: {LOCAL_CSV_PATH}")
+        if file_size == 0:
+            raise ValueError(f"CSV file is empty: {local_csv_path}")
 
-    df = pd.read_csv(LOCAL_CSV_PATH)
-    logger.info(f"Loaded {len(df)} rows, columns: {list(df.columns)}")
-    return df
+        df = pd.read_csv(local_csv_path)
+        logger.info(f"Loaded {len(df)} rows, columns: {list(df.columns)}")
+        return df
+
+    except Exception as e:
+        logger.error(f"Failed to load data from HF Dataset: {e}")
+        raise
 
 
 @app.get("/")
@@ -118,7 +132,7 @@ def recommend(category: str):
 
 @app.post("/run-scraper")
 def trigger_scraper():
-    """Trigger download Kaggle → save CSV."""
+    """Trigger download Kaggle → save CSV → upload to HF."""
     import subprocess
     result = subprocess.run(["python", "backend/scraper.py"], capture_output=True, text=True)
     if result.returncode == 0:
@@ -127,9 +141,10 @@ def trigger_scraper():
         return {"status": "Scraper failed", "error": result.stderr}
 
 
-frontend_dir = Path("")
+# Mount frontend
+frontend_dir = Path("frontend")
 if frontend_dir.exists():
-    app.mount("/", StaticFiles(directory=str(frontend), html=True), name="frontend")
+    app.mount("/", StaticFiles(directory=str(frontend_dir), html=True), name="frontend")
 else:
     @app.get("/")
     def frontend_placeholder():

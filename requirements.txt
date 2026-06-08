@@ -1,4 +1,4 @@
-fastapi==0.109.2
+fastapi
 uvicorn
 pandas
 kaggle
