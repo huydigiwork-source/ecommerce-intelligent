@@ -66,11 +66,11 @@ jobs:
       - name: Login to Hugging Face
         run: hf auth login --token ${{ secrets.HF_TOKEN }}
 
-      - name: Setup Kaggle API
+      - name: Setup Kaggle API (environment method)
         run: |
-          mkdir -p ~/.kaggle
-          echo '${{ secrets.KAGGLE_API_TOKEN }}' > ~/.kaggle/access_token
-          chmod 600 ~/.kaggle/access_token
+          echo "✅ Setting up Kaggle API via environment variables..."
+          export KAGGLE_API_TOKEN='${{ secrets.KAGGLE_API_TOKEN }}'
+          echo "KAGGLE_API_TOKEN=$KAGGLE_API_TOKEN" >> $GITHUB_ENV
           echo "✅ Kaggle API setup complete"
 
       - name: Run scraper

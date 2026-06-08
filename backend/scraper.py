@@ -7,8 +7,8 @@ import shutil
 # Set Kaggle env vars TRƯỚC khi import Kaggle
 token = os.getenv("KAGGLE_API_TOKEN")
 if token:
-    token_value = token.split('_')[1] if '_' in token else token
-    os.environ['KAGGLE_KEY'] = token_value
+    # Kaggle API v2:直接使用 access_token
+    os.environ['KAGGLE_API_TOKEN'] = token
     os.environ['KAGGLE_USERNAME'] = 'johnsontrann'
 
 logging.basicConfig(level=logging.INFO)
