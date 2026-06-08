@@ -1,0 +1,77 @@
+name: CI/CD - Upload to HF Space & Dataset
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      frontend_changed: ${{ steps.changes.outputs.frontend }}
+      backend_changed: ${{ steps.changes.outputs.backend }}
+      data_changed: ${{ steps.changes.outputs.data }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed files
+        id: changes
+        run: |
+          echo "Checking changed files from last commit..."
+          git diff --name-only HEAD~1 HEAD > changed_files.txt
+          cat changed_files.txt
+          
+          echo "frontend=false" >> $GITHUB_OUTPUT
+          echo "backend=false" >> $GITHUB_OUTPUT
+          echo "data=false" >> $GITHUB_OUTPUT
+          
+          if grep -q "^frontend/" changed_files.txt; then
+            echo "frontend=true" >> $GITHUB_OUTPUT
+            echo "✅ Frontend changed"
+          fi
+          
+          if grep -q "^backend/" changed_files.txt; then
+            echo "backend=true" >> $GITHUB_OUTPUT
+            echo "✅ Backend changed"
+          fi
+          
+          if grep -q "^data/" changed_files.txt; then
+            echo "data=true" >> $GITHUB_OUTPUT
+            echo "✅ Data changed"
+          fi
+
+  upload-to-space:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync to Hugging Face Space
+        uses: huggingface/hub-sync@v0.1.0
+        with:
+          github_repo_id: ${{ github.repository }}
+          huggingface_repo_id: ${{ secrets.HF_SPACE_ID }}
+          hf_token: ${{ secrets.HF_TOKEN }}
+          repo_type: space
+
+  upload-to-dataset:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.data == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Sync to Hugging Face Dataset
+        uses: huggingface/hub-sync@v0.1.0
+        with:
+          github_repo_id: ${{ github.repository }}
+          huggingface_repo_id: ${{ secrets.HF_DATASET_ID }}
+          hf_token: ${{ secrets.HF_TOKEN }}
+          repo_type: dataset

@@ -1,0 +1,5 @@
+fastapi==0.109.2
+uvicorn
+pandas
+kaggle
+huggingface_hub
