@@ -64,7 +64,7 @@ jobs:
           pip install huggingface_hub
 
       - name: Login to Hugging Face
-        run: huggingface-cli login --token ${{ secrets.HF_TOKEN }}
+        run: hf auth login --token ${{ secrets.HF_TOKEN }}
 
       - name: Login to Kaggle
         run: |
@@ -103,7 +103,7 @@ jobs:
         run: pip install huggingface_hub
 
       - name: Login to Hugging Face
-        run: huggingface-cli login --token ${{ secrets.HF_TOKEN }}
+        run: hf auth login --token ${{ secrets.HF_TOKEN }}
 
       - name: Run scraper (if data not changed)
         if: ${{ needs.detect-changes.outputs.data == 'false' }}
@@ -117,9 +117,9 @@ jobs:
         run: |
           echo "📤 Uploading data to HF Dataset..."
           if [ -d "data" ]; then
-            huggingface-cli upload ${{ secrets.HF_DATASET_ID }} data data/ --repo-type dataset
+            hf upload ${{ secrets.HF_DATASET_ID }} data data/ --repo-type dataset
           elif [ -f "data/ecommerce_products.csv" ]; then
-            huggingface-cli upload ${{ secrets.HF_DATASET_ID }} data/ecommerce_products.csv data/ecommerce_products.csv --repo-type dataset
+            hf upload ${{ secrets.HF_DATASET_ID }} data/ecommerce_products.csv data/ecommerce_products.csv --repo-type dataset
           else
             echo "❌ No data files found"
             exit 1
@@ -143,14 +143,14 @@ jobs:
         run: pip install huggingface_hub
 
       - name: Login to Hugging Face
-        run: huggingface-cli login --token ${{ secrets.HF_TOKEN }}
+        run: hf auth login --token ${{ secrets.HF_TOKEN }}
 
       - name: Upload frontend to HF Space
         if: ${{ needs.detect-changes.outputs.frontend == 'true' }}
         run: |
           echo "📤 Uploading frontend to HF Space..."
           if [ -d "frontend" ]; then
-            huggingface-cli upload ${{ secrets.HF_SPACE_ID }} frontend frontend/ --repo-type space
+            hf upload ${{ secrets.HF_SPACE_ID }} frontend frontend/ --repo-type space
           fi
 
       - name: Upload backend to HF Space
@@ -158,5 +158,5 @@ jobs:
         run: |
           echo "📤 Uploading backend to HF Space..."
           if [ -d "backend" ]; then
-            huggingface-cli upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
+            hf upload ${{ secrets.HF_SPACE_ID }} backend backend/ --repo-type space
           fi
