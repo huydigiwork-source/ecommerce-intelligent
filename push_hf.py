@@ -22,8 +22,7 @@ SPACE_DIR = SPACE_NAME
 FILES_TO_UPLOAD = [
     "app.py",
     "requirements.txt",
-    "Dockerfile",
-    ".gitignore",
+    "Dockerfile"
 ]
 
 BACKEND_DIR = "backend"
